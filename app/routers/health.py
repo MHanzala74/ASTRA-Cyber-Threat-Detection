@@ -1,10 +1,9 @@
-"""
-ASTRA - Health Check Router
-"""
+"""ASTRA - Health Check Router."""
 
 from fastapi import APIRouter
-from app.schemas import HealthResponse
+
 from app.models import model_manager
+from app.schemas import HealthResponse
 
 router = APIRouter()
 
@@ -17,6 +16,7 @@ def health_check():
     return HealthResponse(
         status="ok" if ready else "degraded",
         models_loaded=ready,
-        message="ASTRA API is running. Models loaded " if ready
-                else "Models are not loaded yet. Call /startup.",
+        message="ASTRA API is running. Models loaded."
+        if ready
+        else "Models are not loaded yet. Call /startup.",
     )
