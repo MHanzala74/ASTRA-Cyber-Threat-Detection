@@ -3,20 +3,20 @@ ASTRA - Application Startup
 Load models when the app starts.
 """
 
-from app.main import app
-from app.models import model_manager
 from app.blockchain import blockchain
+from app.logging_config import logger
+from app.models import model_manager
 
 
-@app.on_event("startup")
 async def startup_event():
-    print("🚀 ASTRA starting up...")
+    logger.info("ASTRA starting up...")
 
     try:
         model_manager.load()
-        print("✅ ML Models loaded successfully!")
-    except FileNotFoundError as e:
-        print(f"⚠️ Warning: Model files not found: {e}")
+        logger.info("ML models loaded successfully.")
+    except FileNotFoundError as exc:
+        logger.warning("Model files not found: %s", exc)
+    except Exception as exc:
+        logger.exception("Model loading failed: %s", exc)
 
-    # Blockchain connect (optional — if Ganache is not running, skip gracefully)
     blockchain.connect()
