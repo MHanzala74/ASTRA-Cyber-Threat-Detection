@@ -1,6 +1,6 @@
 """
 ASTRA - Pydantic Schemas
-Request / Response models for all API endpoints.
+Request and response models for all API endpoints.
 """
 
 from __future__ import annotations
@@ -8,69 +8,69 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
-# ═══════════════════════════════════════════════════════════
-#  REQUEST – single network flow
-# ═══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+#  REQUEST — single network flow
+# ══════════════════════════════════════════════════════════════════════
 class NetworkFlow(BaseModel):
     """
-    Single network flow features (51 features).
-    If any field is missing, default value 0.0 will be used.
+    51-feature network flow record extracted by a flow analyzer (e.g. CICFlowMeter).
+    Missing fields default to 0.0.
     """
-    Flow_Duration: float = 0.0
-    Total_Fwd_Packets: float = 0.0
-    Total_Length_of_Fwd_Packets: float = 0.0
-    Fwd_Packet_Length_Max: float = 0.0
-    Fwd_Packet_Length_Min: float = 0.0
-    Fwd_Packet_Length_Mean: float = 0.0
-    Bwd_Packet_Length_Max: float = 0.0
-    Bwd_Packet_Length_Min: float = 0.0
-    Flow_Bytes_per_s: float = Field(0.0, alias="Flow_Bytes/s")
-    Flow_Packets_per_s: float = Field(0.0, alias="Flow_Packets/s")
-    Flow_IAT_Mean: float = 0.0
-    Flow_IAT_Std: float = 0.0
-    Flow_IAT_Max: float = 0.0
-    Flow_IAT_Min: float = 0.0
-    Fwd_IAT_Mean: float = 0.0
-    Fwd_IAT_Std: float = 0.0
-    Fwd_IAT_Min: float = 0.0
-    Bwd_IAT_Total: float = 0.0
-    Bwd_IAT_Mean: float = 0.0
-    Bwd_IAT_Std: float = 0.0
-    Bwd_IAT_Max: float = 0.0
-    Bwd_IAT_Min: float = 0.0
-    Fwd_PSH_Flags: float = 0.0
-    Fwd_Header_Length: float = 0.0
-    Bwd_Header_Length: float = 0.0
-    Bwd_Packets_per_s: float = Field(0.0, alias="Bwd_Packets/s")
-    Min_Packet_Length: float = 0.0
-    Max_Packet_Length: float = 0.0
-    Packet_Length_Mean: float = 0.0
-    Packet_Length_Variance: float = 0.0
-    FIN_Flag_Count: float = 0.0
-    RST_Flag_Count: float = 0.0
-    PSH_Flag_Count: float = 0.0
-    ACK_Flag_Count: float = 0.0
-    URG_Flag_Count: float = 0.0
-    Down_Up_Ratio: float = Field(0.0, alias="Down/Up_Ratio")
-    Fwd_Avg_Bytes_Bulk: float = Field(0.0, alias="Fwd_Avg_Bytes/Bulk")
-    Fwd_Avg_Packets_Bulk: float = Field(0.0, alias="Fwd_Avg_Packets/Bulk")
-    Fwd_Avg_Bulk_Rate: float = Field(0.0, alias="Fwd_Avg_Bulk_Rate")
-    Bwd_Avg_Bytes_Bulk: float = Field(0.0, alias="Bwd_Avg_Bytes/Bulk")
-    Bwd_Avg_Packets_Bulk: float = Field(0.0, alias="Bwd_Avg_Packets/Bulk")
-    Bwd_Avg_Bulk_Rate: float = Field(0.0, alias="Bwd_Avg_Bulk_Rate")
-    Init_Win_bytes_forward: float = 0.0
-    Init_Win_bytes_backward: float = 0.0
-    act_data_pkt_fwd: float = 0.0
-    min_seg_size_forward: float = 0.0
-    Active_Mean: float = 0.0
-    Active_Std: float = 0.0
-    Active_Max: float = 0.0
-    Active_Min: float = 0.0
-    Idle_Std: float = 0.0
+    Flow_Duration:                  float = 0.0
+    Total_Fwd_Packets:              float = 0.0
+    Total_Length_of_Fwd_Packets:    float = 0.0
+    Fwd_Packet_Length_Max:          float = 0.0
+    Fwd_Packet_Length_Min:          float = 0.0
+    Fwd_Packet_Length_Mean:         float = 0.0
+    Bwd_Packet_Length_Max:          float = 0.0
+    Bwd_Packet_Length_Min:          float = 0.0
+    Flow_Bytes_per_s:               float = Field(0.0, alias="Flow_Bytes/s")
+    Flow_Packets_per_s:             float = Field(0.0, alias="Flow_Packets/s")
+    Flow_IAT_Mean:                  float = 0.0
+    Flow_IAT_Std:                   float = 0.0
+    Flow_IAT_Max:                   float = 0.0
+    Flow_IAT_Min:                   float = 0.0
+    Fwd_IAT_Mean:                   float = 0.0
+    Fwd_IAT_Std:                    float = 0.0
+    Fwd_IAT_Min:                    float = 0.0
+    Bwd_IAT_Total:                  float = 0.0
+    Bwd_IAT_Mean:                   float = 0.0
+    Bwd_IAT_Std:                    float = 0.0
+    Bwd_IAT_Max:                    float = 0.0
+    Bwd_IAT_Min:                    float = 0.0
+    Fwd_PSH_Flags:                  float = 0.0
+    Fwd_Header_Length:              float = 0.0
+    Bwd_Header_Length:              float = 0.0
+    Bwd_Packets_per_s:              float = Field(0.0, alias="Bwd_Packets/s")
+    Min_Packet_Length:              float = 0.0
+    Max_Packet_Length:              float = 0.0
+    Packet_Length_Mean:             float = 0.0
+    Packet_Length_Variance:         float = 0.0
+    FIN_Flag_Count:                 float = 0.0
+    RST_Flag_Count:                 float = 0.0
+    PSH_Flag_Count:                 float = 0.0
+    ACK_Flag_Count:                 float = 0.0
+    URG_Flag_Count:                 float = 0.0
+    Down_Up_Ratio:                  float = Field(0.0, alias="Down/Up_Ratio")
+    Fwd_Avg_Bytes_Bulk:             float = Field(0.0, alias="Fwd_Avg_Bytes/Bulk")
+    Fwd_Avg_Packets_Bulk:           float = Field(0.0, alias="Fwd_Avg_Packets/Bulk")
+    Fwd_Avg_Bulk_Rate:              float = 0.0
+    Bwd_Avg_Bytes_Bulk:             float = Field(0.0, alias="Bwd_Avg_Bytes/Bulk")
+    Bwd_Avg_Packets_Bulk:           float = Field(0.0, alias="Bwd_Avg_Packets/Bulk")
+    Bwd_Avg_Bulk_Rate:              float = 0.0
+    Init_Win_bytes_forward:         float = 0.0
+    Init_Win_bytes_backward:        float = 0.0
+    act_data_pkt_fwd:               float = 0.0
+    min_seg_size_forward:           float = 0.0
+    Active_Mean:                    float = 0.0
+    Active_Std:                     float = 0.0
+    Active_Max:                     float = 0.0
+    Active_Min:                     float = 0.0
+    Idle_Std:                       float = 0.0
 
-    class Config:
-        populate_by_name = True   # pydantic v2
-        json_schema_extra = {
+    model_config = {
+        "populate_by_name": True,
+        "json_schema_extra": {
             "example": {
                 "Flow_Duration": 109,
                 "Total_Fwd_Packets": 1,
@@ -124,31 +124,32 @@ class NetworkFlow(BaseModel):
                 "Active_Min": 0,
                 "Idle_Std": 0.0,
             }
-        }
+        },
+    }
 
 
-# ═══════════════════════════════════════════════════════════
-#  RESPONSE – single prediction
-# ═══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+#  RESPONSE — single prediction
+# ══════════════════════════════════════════════════════════════════════
 class ThreatPrediction(BaseModel):
-    rf_prediction:   str   = Field(..., description="Random Forest prediction")
-    xgb_prediction:  str   = Field(..., description="XGBoost prediction")
-    rf_confidence:   float = Field(..., description="RF confidence score (0-1)")
-    xgb_confidence:  float = Field(..., description="XGBoost confidence score (0-1)")
-    final_verdict:   str   = Field(..., description="Final threat label (majority vote)")
-    severity:        str   = Field(..., description="none / medium / high / critical")
-    recommended_action: str = Field(..., description="Automated response suggestion")
-    is_threat:       bool  = Field(..., description="True if a threat is detected")
+    rf_prediction:      str   = Field(..., description="Random Forest label")
+    xgb_prediction:     str   = Field(..., description="XGBoost label")
+    rf_confidence:      float = Field(..., description="RF confidence (0–1)")
+    xgb_confidence:     float = Field(..., description="XGBoost confidence (0–1)")
+    final_verdict:      str   = Field(..., description="Ensemble final label")
+    severity:           str   = Field(..., description="none | medium | high | critical")
+    recommended_action: str   = Field(..., description="Automated response suggestion")
+    is_threat:          bool  = Field(..., description="True if a threat is detected")
 
 
-# ═══════════════════════════════════════════════════════════
-#  REQUEST – batch
-# ═══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+#  REQUEST — batch
+# ══════════════════════════════════════════════════════════════════════
 class BatchRequest(BaseModel):
-    flows: List[NetworkFlow] = Field(..., description="Multiple network flows")
+    flows: List[NetworkFlow] = Field(..., description="List of network flows (max 1000)")
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "flows": [
                     {"Flow_Duration": 109, "ACK_Flag_Count": 1},
@@ -156,22 +157,26 @@ class BatchRequest(BaseModel):
                 ]
             }
         }
+    }
 
 
-# ═══════════════════════════════════════════════════════════
-#  RESPONSE – batch
-# ═══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+#  RESPONSE — batch
+# ══════════════════════════════════════════════════════════════════════
 class BatchPrediction(BaseModel):
     total_flows:    int
     threats_found:  int
     results:        List[ThreatPrediction]
-    summary:        dict   # label → count
+    summary:        dict
 
 
-# ═══════════════════════════════════════════════════════════
-#  RESPONSE – health
-# ═══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+#  RESPONSE — health
+# ══════════════════════════════════════════════════════════════════════
 class HealthResponse(BaseModel):
-    status:         str
-    models_loaded:  bool
-    message:        str
+    status:               str
+    models_loaded:        bool
+    blockchain_connected: bool  = False
+    version:              str   = ""
+    environment:          str   = ""
+    message:              str

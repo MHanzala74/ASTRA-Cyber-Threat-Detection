@@ -1,18 +1,16 @@
 """
 ASTRA - Model Loading (Singleton Pattern)
-Models are loaded once from the artifacts folder, not on every request.
+Models are loaded once at startup, not on every request.
 """
 
-import os
 import joblib
 import numpy as np
 from pathlib import Path
 
-# ─── Artifacts path ─────────────────────────────────────────────────────────────
-BASE_DIR   = Path(__file__).resolve().parent.parent
-ARTIFACTS  = BASE_DIR / "artifacts"
+from app.config import settings
+from app.logger import logger
 
-# ─── 51 Features (exact order from training notebook) ──────────────────────────
+# ── Feature columns (51, exact order from training) ────────────────────
 EXPECTED_COLS = [
     "Flow_Duration", "Total_Fwd_Packets", "Total_Length_of_Fwd_Packets",
     "Fwd_Packet_Length_Max", "Fwd_Packet_Length_Min", "Fwd_Packet_Length_Mean",
@@ -30,10 +28,10 @@ EXPECTED_COLS = [
     "Active_Min", "Idle_Std",
 ]
 
-# ─── Class labels ───────────────────────────────────────────────────────────────
+# ── Class labels ────────────────────────────────────────────────────────
 THREAT_LABELS = ["benign", "bruteforce", "ddos", "dos", "infiltration", "portscan"]
 
-# ─── Severity mapping ───────────────────────────────────────────────────────────
+# ── Severity mapping ────────────────────────────────────────────────────
 SEVERITY_MAP = {
     "benign":       "none",
     "bruteforce":   "high",
@@ -43,7 +41,7 @@ SEVERITY_MAP = {
     "portscan":     "medium",
 }
 
-# ─── Recommended actions ────────────────────────────────────────────────────────
+# ── Recommended actions ─────────────────────────────────────────────────
 RESPONSE_MAP = {
     "benign":       "No action required.",
     "bruteforce":   "Block source IP. Enable account lockout policy.",
@@ -55,7 +53,7 @@ RESPONSE_MAP = {
 
 
 class ModelManager:
-    """Singleton - models are loaded only once at app startup."""
+    """Singleton — ML models are loaded only once at app startup."""
 
     _instance = None
 
@@ -69,19 +67,35 @@ class ModelManager:
         if self._loaded:
             return
 
-        self.rf      = joblib.load(ARTIFACTS / "rf_multiclass.pkl")
-        self.xgb     = joblib.load(ARTIFACTS / "xgb_multiclass.pkl")
-        self.le      = joblib.load(ARTIFACTS / "label_encoder.pkl")
-        self.scaler  = joblib.load(ARTIFACTS / "scaler.pkl")
+        artifacts = settings.artifacts_dir
+
+        missing = [
+            name for name in ["rf_multiclass.pkl", "xgb_multiclass.pkl", "label_encoder.pkl", "scaler.pkl"]
+            if not (artifacts / name).exists()
+        ]
+        if missing:
+            raise FileNotFoundError(f"Missing artifacts in {artifacts}: {missing}")
+
+        logger.info("Loading ML models from %s ...", artifacts)
+        self.rf      = joblib.load(artifacts / "rf_multiclass.pkl")
+        self.xgb     = joblib.load(artifacts / "xgb_multiclass.pkl")
+        self.le      = joblib.load(artifacts / "label_encoder.pkl")
+        self.scaler  = joblib.load(artifacts / "scaler.pkl")
         self._loaded = True
+        logger.info("ML models loaded ✅")
 
     def is_ready(self) -> bool:
         return self._loaded
 
     def predict(self, X_scaled: np.ndarray) -> dict:
         """
-        Returns RF and XGBoost predictions for a scaled numpy array.
-        X_scaled shape: (n_samples, 51)
+        Run RF + XGBoost predictions on a pre-scaled feature array.
+
+        Args:
+            X_scaled: numpy array of shape (n_samples, 51)
+
+        Returns:
+            dict with predictions, labels, and confidence scores
         """
         rf_enc  = self.rf.predict(X_scaled)
         xgb_enc = self.xgb.predict(X_scaled)
@@ -89,17 +103,16 @@ class ModelManager:
         rf_labels  = self.le.inverse_transform(rf_enc).tolist()
         xgb_labels = self.le.inverse_transform(xgb_enc).tolist()
 
-        # Probability scores (RF supports predict_proba)
-        rf_proba  = self.rf.predict_proba(X_scaled).max(axis=1).tolist()
-        xgb_proba = self.xgb.predict_proba(X_scaled).max(axis=1).tolist()
+        rf_proba   = self.rf.predict_proba(X_scaled).max(axis=1).tolist()
+        xgb_proba  = self.xgb.predict_proba(X_scaled).max(axis=1).tolist()
 
         return {
-            "rf_predictions":   rf_labels,
-            "xgb_predictions":  xgb_labels,
-            "rf_confidence":    rf_proba,
-            "xgb_confidence":   xgb_proba,
+            "rf_predictions":  rf_labels,
+            "xgb_predictions": xgb_labels,
+            "rf_confidence":   rf_proba,
+            "xgb_confidence":  xgb_proba,
         }
 
 
-# ─── Global singleton ───────────────────────────────────────────────────────────
+# ── Global singleton ──────────────────────────────────────────────────
 model_manager = ModelManager()

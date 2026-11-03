@@ -1,3 +1,8 @@
+"""
+ASTRA - Batch Prediction Router
+Supports JSON body (up to 1000 flows) and CSV upload (up to 5000 rows).
+"""
+
 import io
 import numpy as np
 import pandas as pd
@@ -8,17 +13,22 @@ from app.schemas import NetworkFlow, ThreatPrediction, BatchRequest, BatchPredic
 from app.models import model_manager, EXPECTED_COLS, SEVERITY_MAP, RESPONSE_MAP
 from app.routers.predict import flow_to_array, make_verdict
 from app.blockchain import blockchain
+from app.logger import logger
 
 router = APIRouter()
 
+MAX_JSON_FLOWS = 1_000
+MAX_CSV_ROWS   = 5_000
 
-def build_predictions(X_scaled: np.ndarray) -> list[ThreatPrediction]:
+
+def _build_predictions(X_scaled: np.ndarray) -> list[ThreatPrediction]:
     result = model_manager.predict(X_scaled)
-    preds = []
+    preds  = []
+
     for i in range(len(result["rf_predictions"])):
-        rf_label = result["rf_predictions"][i]
+        rf_label  = result["rf_predictions"][i]
         xgb_label = result["xgb_predictions"][i]
-        verdict = make_verdict(rf_label, xgb_label)
+        verdict   = make_verdict(rf_label, xgb_label)
 
         preds.append(ThreatPrediction(
             rf_prediction=rf_label,
@@ -30,60 +40,71 @@ def build_predictions(X_scaled: np.ndarray) -> list[ThreatPrediction]:
             recommended_action=RESPONSE_MAP.get(verdict, "Investigate manually."),
             is_threat=(verdict != "benign"),
         ))
+
     return preds
 
 
-def log_threats_to_blockchain(preds: list[ThreatPrediction]):
-    """Log only threats to the blockchain (skip benign)."""
-    logged = 0
-    for p in preds:
-        if p.is_threat:
-            tx = blockchain.log_threat(p.model_dump())
-            if tx:
-                logged += 1
-
+def _log_threats(preds: list[ThreatPrediction]):
+    """Log only detected threats to the blockchain."""
+    logged = sum(
+        1 for p in preds
+        if p.is_threat and blockchain.log_threat(p.model_dump())
+    )
     if logged:
-        print(f"⛓ Blockchain: {logged} threat(s) logged.")
+        logger.info("Blockchain: %d threat(s) logged from batch", logged)
 
 
-# ─── JSON batch ──────────────────────────────────────────────────────
-@router.post("/predict/batch", response_model=BatchPrediction)
-def predict_batch(request: BatchRequest):
-    """Analyze multiple network flows together (JSON body). Max 1000."""
-    
-    if not model_manager.is_ready():
-        raise HTTPException(status_code=503, detail="Models are not loaded yet.")
-
-    if len(request.flows) > 1000:
-        raise HTTPException(status_code=400, detail="Max 1000 flows per request.")
-
-    X = np.vstack([flow_to_array(f) for f in request.flows])
-    X_scaled = model_manager.scaler.transform(X)
-    preds = build_predictions(X_scaled)
-
-    # ── Blockchain logging ──────────────────────────────────────────
-    log_threats_to_blockchain(preds)
-
-    summary = dict(Counter(p.final_verdict for p in preds))
-
+def _make_batch_response(preds: list[ThreatPrediction]) -> BatchPrediction:
     return BatchPrediction(
         total_flows=len(preds),
         threats_found=sum(1 for p in preds if p.is_threat),
         results=preds,
-        summary=summary,
+        summary=dict(Counter(p.final_verdict for p in preds)),
     )
 
 
-# ─── CSV upload ──────────────────────────────────────────────────────
-@router.post("/predict/csv", response_model=BatchPrediction)
-async def predict_csv(file: UploadFile = File(...)):
-    """Upload a CSV file and get batch predictions. Max 5000 rows."""
-
+# ── JSON batch ─────────────────────────────────────────────────────────
+@router.post(
+    "/predict/batch",
+    response_model=BatchPrediction,
+    summary=f"Analyze multiple flows (JSON, max {MAX_JSON_FLOWS})",
+)
+def predict_batch(request: BatchRequest):
+    """Analyze up to **1,000** network flows in a single JSON request."""
     if not model_manager.is_ready():
         raise HTTPException(status_code=503, detail="Models are not loaded yet.")
 
-    if not file.filename.endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Only .csv files are allowed.")
+    if len(request.flows) > MAX_JSON_FLOWS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_JSON_FLOWS} flows per request. Received {len(request.flows)}.",
+        )
+
+    X        = np.vstack([flow_to_array(f) for f in request.flows])
+    X_scaled = model_manager.scaler.transform(X)
+    preds    = _build_predictions(X_scaled)
+
+    _log_threats(preds)
+    return _make_batch_response(preds)
+
+
+# ── CSV upload ─────────────────────────────────────────────────────────
+@router.post(
+    "/predict/csv",
+    response_model=BatchPrediction,
+    summary=f"Analyze flows from CSV upload (max {MAX_CSV_ROWS} rows)",
+)
+async def predict_csv(file: UploadFile = File(...)):
+    """
+    Upload a **.csv** file containing network flow features.
+    Columns must match the expected 51-feature schema (missing columns default to 0).
+    Maximum **5,000 rows** per upload.
+    """
+    if not model_manager.is_ready():
+        raise HTTPException(status_code=503, detail="Models are not loaded yet.")
+
+    if not (file.filename or "").endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv files are accepted.")
 
     contents = await file.read()
 
@@ -92,8 +113,11 @@ async def predict_csv(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"CSV parse error: {e}")
 
-    if len(df) > 5000:
-        raise HTTPException(status_code=400, detail="Max 5000 rows per CSV.")
+    if len(df) > MAX_CSV_ROWS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_CSV_ROWS} rows per file. Received {len(df)}.",
+        )
 
     df.columns = df.columns.str.strip()
     df = df.reindex(columns=EXPECTED_COLS, fill_value=0.0).fillna(0.0)
@@ -101,18 +125,10 @@ async def predict_csv(file: UploadFile = File(...)):
     try:
         X_scaled = model_manager.scaler.transform(df.values.astype(np.float64))
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Scaling error: {e}")
+        raise HTTPException(status_code=422, detail=f"Feature scaling error: {e}")
 
-    preds = build_predictions(X_scaled)
+    preds = _build_predictions(X_scaled)
 
-    # ── Blockchain logging ──────────────────────────────────────────
-    log_threats_to_blockchain(preds)
-
-    summary = dict(Counter(p.final_verdict for p in preds))
-
-    return BatchPrediction(
-        total_flows=len(preds),
-        threats_found=sum(1 for p in preds if p.is_threat),
-        results=preds,
-        summary=summary,
-    )
+    _log_threats(preds)
+    logger.info("CSV prediction: %d flows, %d threats", len(preds), sum(1 for p in preds if p.is_threat))
+    return _make_batch_response(preds)

@@ -1,6 +1,7 @@
-def main():
-    print("Hello from fyp-implementation!")
+"""
+ASTRA - Root entry point
+Delegates to startup.py for uvicorn configuration.
+Run with:  python startup.py
+"""
 
-
-if __name__ == "__main__":
-    main()
+from startup import *  # noqa

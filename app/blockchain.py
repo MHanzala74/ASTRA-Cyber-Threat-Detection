@@ -1,29 +1,26 @@
 """
 ASTRA — Blockchain Integration Module
 Handles Web3 calls inside FastAPI.
-Logs every detected threat to the blockchain.
+Logs every detected threat to the blockchain (Ganache / any EVM node).
 """
 
 import json
-import os
-from pathlib import Path
 from typing import Optional
+
 from web3 import Web3
 from web3.exceptions import ContractLogicError
 from dotenv import load_dotenv
 
-load_dotenv()
+from app.config import settings
+from app.logger import logger
 
-# ── Config (from environment variables) ───────────────────────────────
-GANACHE_URL       = os.getenv("GANACHE_URL",       "http://127.0.0.1:8545")
-CONTRACT_ADDRESS  = os.getenv("CONTRACT_ADDRESS",  "")   # fill after deployment
-ABI_PATH          = Path(__file__).parent / "ThreatLog_abi.json"
+load_dotenv()
 
 
 class BlockchainLogger:
     """
-    Singleton — connect once, reuse multiple times.
-    If Ganache is not running, it will fail gracefully (API will not crash).
+    Singleton — connect once, reuse for every request.
+    Fails gracefully: if Ganache is not running, the API still works.
     """
 
     _instance = None
@@ -35,38 +32,38 @@ class BlockchainLogger:
         return cls._instance
 
     def connect(self):
-        """Call this at FastAPI startup."""
+        """Call once at FastAPI startup."""
         if self._ready:
             return
 
-        if not CONTRACT_ADDRESS:
-            print("⚠️  Blockchain: CONTRACT_ADDRESS is missing in .env — logging disabled.")
+        if not settings.contract_address:
+            logger.warning("Blockchain: CONTRACT_ADDRESS missing in .env — logging disabled")
             return
 
-        if not ABI_PATH.exists():
-            print("⚠️  Blockchain: ThreatLog_abi.json not found — run deploy_contract.py first.")
+        if not settings.abi_path.exists():
+            logger.warning("Blockchain: ThreatLog_abi.json not found — run deploy_contract.py first")
             return
 
         try:
-            self._w3 = Web3(Web3.HTTPProvider(GANACHE_URL))
+            self._w3 = Web3(Web3.HTTPProvider(settings.ganache_url))
 
             if not self._w3.is_connected():
-                print("⚠️  Blockchain: Could not connect to Ganache — logging disabled.")
+                logger.warning("Blockchain: Cannot connect to %s — logging disabled", settings.ganache_url)
                 return
 
-            abi = json.loads(ABI_PATH.read_text())
-            checksum_addr = Web3.to_checksum_address(CONTRACT_ADDRESS)
+            abi = json.loads(settings.abi_path.read_text())
+            checksum_addr = Web3.to_checksum_address(settings.contract_address)
 
-            self._contract  = self._w3.eth.contract(address=checksum_addr, abi=abi)
-            self._account   = self._w3.eth.accounts[0]   # default Ganache account
-            self._ready     = True
+            self._contract = self._w3.eth.contract(address=checksum_addr, abi=abi)
+            self._account  = self._w3.eth.accounts[0]
+            self._ready    = True
 
-            print(f"✅ Blockchain connected: {GANACHE_URL}")
-            print(f"   Contract : {checksum_addr}")
-            print(f"   Account  : {self._account}")
+            logger.info("Blockchain connected: %s", settings.ganache_url)
+            logger.info("Contract : %s", checksum_addr)
+            logger.info("Account  : %s", self._account)
 
         except Exception as e:
-            print(f"⚠️  Blockchain init error: {e} — logging disabled.")
+            logger.error("Blockchain init error: %s — logging disabled", e)
 
     def is_ready(self) -> bool:
         return self._ready
@@ -79,13 +76,12 @@ class BlockchainLogger:
             prediction: response dict from /predict endpoint
 
         Returns:
-            tx_hash string if success, None if failed
+            tx_hash (hex string) if success, None if failed/disabled
         """
         if not self._ready:
             return None
 
         try:
-            # Convert confidence 0–1 float → integer (e.g. 0.9876 → 9876)
             rf_conf  = int(prediction.get("rf_confidence",  0) * 10_000)
             xgb_conf = int(prediction.get("xgb_confidence", 0) * 10_000)
 
@@ -103,21 +99,21 @@ class BlockchainLogger:
                 "gas":  500_000,
             })
 
-            receipt = self._w3.eth.wait_for_transaction_receipt(tx_hash)
-            tx_str  = tx_hash.hex()
+            receipt  = self._w3.eth.wait_for_transaction_receipt(tx_hash)
+            tx_str   = tx_hash.hex()
 
-            print(f"⛓ Blockchain log: {tx_str[:20]}... block={receipt['blockNumber']}")
+            logger.info("Blockchain log: %s... block=%s", tx_str[:20], receipt["blockNumber"])
             return tx_str
 
         except ContractLogicError as e:
-            print(f"⚠️  Contract error: {e}")
+            logger.error("Contract logic error: %s", e)
             return None
         except Exception as e:
-            print(f"⚠️  Blockchain log error: {e}")
+            logger.error("Blockchain log error: %s", e)
             return None
 
     def get_all_logs(self) -> list[dict]:
-        """Fetch all threat records from the blockchain."""
+        """Fetch all threat records stored on the blockchain."""
         if not self._ready:
             return []
 
@@ -143,11 +139,11 @@ class BlockchainLogger:
             return logs
 
         except Exception as e:
-            print(f"⚠️  Blockchain read error: {e}")
+            logger.error("Blockchain read error: %s", e)
             return []
 
     def get_stats(self) -> dict:
-        """Get summary stats from the blockchain."""
+        """Return summary statistics from the blockchain."""
         if not self._ready:
             return {"enabled": False}
 
@@ -160,13 +156,14 @@ class BlockchainLogger:
                 "total_records": total,
                 "threat_count":  threats,
                 "benign_count":  total - threats,
-                "contract":      CONTRACT_ADDRESS,
-                "node":          GANACHE_URL,
+                "contract":      settings.contract_address,
+                "node":          settings.ganache_url,
             }
 
         except Exception as e:
+            logger.error("Blockchain stats error: %s", e)
             return {"enabled": False, "error": str(e)}
 
 
-# ── Global singleton ─────────────────────────────────────────────────
+# ── Global singleton ──────────────────────────────────────────────────
 blockchain = BlockchainLogger()
