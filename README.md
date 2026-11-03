@@ -228,14 +228,7 @@ ASTRA/
 └── README.md
 ```
 
----
 
-## 👥 Team
-
-> BS Computer Science — Abdul Wali Khan University Mardan (AWKUM)
-> Final Year Project 2022–26
-
----
 
 <div align="center">
 Made with ❤️ for cybersecurity research
