@@ -206,8 +206,3 @@ ASTRA/
 └── README.md
 ```
 
-
-
-<div align="center">
-Made with ❤️ for cybersecurity research
-</div>
