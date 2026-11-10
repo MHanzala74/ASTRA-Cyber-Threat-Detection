@@ -1,0 +1,50 @@
+[
+  {
+    "batch_size": 1,
+    "mode": "per-record (ThreatLog)",
+    "tx_count": 500,
+    "gas_per_record": 281739.2,
+    "total_gas": 140869600,
+    "reduction_pct": 0.0
+  },
+  {
+    "batch_size": 10,
+    "mode": "merkle (MerkleAnchor)",
+    "tx_count": 50,
+    "gas_per_record": 7610.756,
+    "total_gas": 3805378,
+    "reduction_pct": 97.29865208675257
+  },
+  {
+    "batch_size": 50,
+    "mode": "merkle (MerkleAnchor)",
+    "tx_count": 10,
+    "gas_per_record": 1549.516,
+    "total_gas": 774758,
+    "reduction_pct": 99.45001760493393
+  },
+  {
+    "batch_size": 100,
+    "mode": "merkle (MerkleAnchor)",
+    "tx_count": 5,
+    "gas_per_record": 791.87,
+    "total_gas": 395935,
+    "reduction_pct": 99.71893510026294
+  },
+  {
+    "batch_size": 250,
+    "mode": "merkle (MerkleAnchor)",
+    "tx_count": 2,
+    "gas_per_record": 337.268,
+    "total_gas": 168634,
+    "reduction_pct": 99.8802907085702
+  },
+  {
+    "batch_size": 500,
+    "mode": "merkle (MerkleAnchor)",
+    "tx_count": 1,
+    "gas_per_record": 185.758,
+    "total_gas": 92879,
+    "reduction_pct": 99.93406739282287
+  }
+]
