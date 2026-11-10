@@ -45,6 +45,40 @@ ASTRA is a production-ready REST API that classifies network traffic flows into 
 
 ---
 
+## 🔬 Novel Contributions
+
+ASTRA goes beyond "classifier + blockchain log" with three research-oriented additions:
+
+### 1. Merkle-batched, tamper-evident audit logging (`LOGGING_MODE=merkle`)
+Writing every threat on-chain is expensive. ASTRA hashes records into a **Merkle tree** off-chain and anchors only the 32-byte **root** per batch in the `MerkleAnchor` smart contract. Any single record can later be proven (locally *and inside the contract*) with a logarithmic-size proof; changing any field of a stored record makes verification fail.
+
+Measured on an in-memory EVM, 500 identical threat records (`python scripts/benchmark_gas.py`):
+
+| Mode | Batch size | Gas / record | Reduction |
+|---|---|---|---|
+| Per-record (`ThreatLog`) | 1 | 281,739 | — |
+| Merkle (`MerkleAnchor`) | 10 | 7,611 | 97.3% |
+| Merkle (`MerkleAnchor`) | 50 | 1,550 | 99.5% |
+| Merkle (`MerkleAnchor`) | 500 | 186 | 99.9% |
+
+![Gas benchmark](docs/gas_benchmark.png)
+
+Trade-off: records are buffered until a batch fills (or `MERKLE_FLUSH_SECONDS` passes), so on-chain anchoring is delayed; raw records live in an off-chain append-only journal (`data/merkle_journal.jsonl`) and the chain guarantees their integrity rather than storing them.
+
+### 2. Explainable detection with a verifiable explanation hash
+`POST /api/v1/predict/explain` returns the verdict **and why**: exact TreeSHAP contributions from XGBoost (`pred_contribs`, no extra dependency). The explanation is faithful by construction — summed contributions reproduce `predict_proba` exactly (unit-tested). Its keccak256 hash is committed inside the audit record, so the tamper-evident log also proves *why* a decision was made. The dashboard renders the top features as signed bars.
+
+### 3. Generalization & robustness evaluation
+`scripts/evaluate.py` evaluates the saved models on another CICFlowMeter dataset (e.g. CSE-CIC-IDS2018) with per-class metrics, confusion matrices, and robustness curves under evasion-like perturbations (raw-space jitter, Gaussian noise, feature masking). It excludes and counts unsupported labels and refuses to run when too many features are missing, so reported numbers are not silently inflated.
+
+```bash
+python scripts/evaluate.py --csv path/to/dataset.csv --name cic2018 --robustness
+```
+
+> Cross-dataset results depend on the data you run it on and are not included here; the script writes `docs/evaluation/<name>/report.md`.
+
+* * *
+
 ## 🏗️ Architecture
 
 ![ASTRA Architecture](docs/architecture.svg)
@@ -90,8 +124,8 @@ ASTRA classifies network flows into 6 categories using **51 CICFlowMeter feature
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/MHanzala74/Final-Year-Project-ASTRA-AI-Based-Cyber-Threat-Detection-Response-System-with-Blockchain-.git
-cd Final-Year-Project-ASTRA-AI-Based-Cyber-Threat-Detection-Response-System-with-Blockchain-
+git clone https://github.com/MHanzala74/ASTRA-Cyber-Threat-Detection.git
+cd ASTRA-Cyber-Threat-Detection
 
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
@@ -165,11 +199,22 @@ Copy `.env.example` to `.env` and fill in:
 
 1. Install & start **Ganache** (GUI or CLI)
 2. Make sure `GANACHE_URL` in `.env` points to it
-3. Run `python deploy_contract.py` — it prints the contract address
-4. Paste the address into `.env` as `CONTRACT_ADDRESS`
-5. Restart the API — threats will now be logged on-chain
+3. Run `python deploy_contract.py` — deploys **ThreatLog** and **MerkleAnchor** and prints both addresses
+4. Paste them into `.env` as `CONTRACT_ADDRESS` and `MERKLE_CONTRACT_ADDRESS`
+5. (Optional) set `LOGGING_MODE=merkle` for gas-efficient batched anchoring
+6. Restart the API — threats will now be logged on-chain
 
 ---
+
+## 🧪 Tests & Benchmarks
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q                              # unit + end-to-end tests (in-memory EVM, real models)
+python scripts/benchmark_gas.py        # per-record vs Merkle gas comparison
+```
+
+* * *
 
 ## 📁 Project Structure
 
@@ -182,7 +227,10 @@ ASTRA/
 │   ├── logger.py            # Structured logging
 │   ├── models.py            # ML model singleton + feature config
 │   ├── schemas.py           # Pydantic request/response models
-│   ├── blockchain.py        # Web3 blockchain integration
+│   ├── blockchain.py        # Web3 blockchain integration (ThreatLog + MerkleAnchor)
+│   ├── merkle.py            # Merkle tree, proofs, persistent batcher
+│   ├── event_logger.py      # per-record vs Merkle logging dispatcher
+│   ├── explain.py           # TreeSHAP explanations + explanation hash
 │   ├── ThreatLog_abi.json   # Smart contract ABI
 │   └── routers/
 │       ├── health.py        # GET /health
@@ -196,7 +244,13 @@ ASTRA/
 │   └── scaler.pkl           # Feature scaler
 ├── ui/
 │   └── astra_dashboard_1.html  # Frontend dashboard
-├── ThreatLog.sol            # Solidity smart contract
+├── ThreatLog.sol            # Per-record smart contract
+├── MerkleAnchor.sol         # Merkle-root anchoring contract
+├── build/contracts/         # Compiled ABI + bytecode (solc 0.8.19)
+├── scripts/
+│   ├── benchmark_gas.py     # Gas benchmark
+│   └── evaluate.py          # Cross-dataset + robustness evaluation
+├── tests/                   # pytest suite
 ├── deploy_contract.py       # Contract deployment script
 ├── startup.py               # Uvicorn entry point
 ├── Dockerfile               # Production Docker image
