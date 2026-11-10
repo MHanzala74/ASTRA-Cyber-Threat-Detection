@@ -18,7 +18,7 @@ def health_check():
     Use this endpoint for load-balancer health probes.
     """
     models_ok     = model_manager.is_ready()
-    blockchain_ok = blockchain.is_ready()
+    blockchain_ok = blockchain.is_connected()
 
     return HealthResponse(
         status="ok" if models_ok else "degraded",

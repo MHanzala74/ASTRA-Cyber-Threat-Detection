@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from app.schemas import NetworkFlow, ThreatPrediction, BatchRequest, BatchPrediction
 from app.models import model_manager, EXPECTED_COLS, SEVERITY_MAP, RESPONSE_MAP
 from app.routers.predict import flow_to_array, make_verdict
-from app.blockchain import blockchain
+from app.event_logger import record_threat
 from app.logger import logger
 
 router = APIRouter()
@@ -45,13 +45,18 @@ def _build_predictions(X_scaled: np.ndarray) -> list[ThreatPrediction]:
 
 
 def _log_threats(preds: list[ThreatPrediction]):
-    """Log only detected threats to the blockchain."""
-    logged = sum(
-        1 for p in preds
-        if p.is_threat and blockchain.log_threat(p.model_dump())
-    )
+    """Log only detected threats (per-record on-chain, or into Merkle batches)."""
+    logged = 0
+    for p in preds:
+        if not p.is_threat:
+            continue
+        ref = record_threat(p.model_dump(exclude={"audit_record_id"}))
+        if ref:
+            logged += 1
+            if ref.get("mode") == "merkle":
+                p.audit_record_id = ref["record_id"]
     if logged:
-        logger.info("Blockchain: %d threat(s) logged from batch", logged)
+        logger.info("Audit log: %d threat(s) recorded from batch", logged)
 
 
 def _make_batch_response(preds: list[ThreatPrediction]) -> BatchPrediction:

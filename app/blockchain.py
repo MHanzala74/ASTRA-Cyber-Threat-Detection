@@ -29,19 +29,19 @@ class BlockchainLogger:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._ready = False
+            cls._instance._merkle_ready = False
         return cls._instance
 
     def connect(self):
         """Call once at FastAPI startup."""
-        if self._ready:
+        if self._ready or self._merkle_ready:
             return
 
-        if not settings.contract_address:
+        has_threatlog = bool(settings.contract_address)
+        has_merkle    = bool(settings.merkle_contract_address)
+
+        if not has_threatlog and not has_merkle:
             logger.warning("Blockchain: CONTRACT_ADDRESS missing in .env — logging disabled")
-            return
-
-        if not settings.abi_path.exists():
-            logger.warning("Blockchain: ThreatLog_abi.json not found — run deploy_contract.py first")
             return
 
         try:
@@ -51,22 +51,84 @@ class BlockchainLogger:
                 logger.warning("Blockchain: Cannot connect to %s — logging disabled", settings.ganache_url)
                 return
 
-            abi = json.loads(settings.abi_path.read_text())
-            checksum_addr = Web3.to_checksum_address(settings.contract_address)
+            self._account = self._w3.eth.accounts[0]
+            logger.info("Blockchain connected: %s (account %s)", settings.ganache_url, self._account)
 
-            self._contract = self._w3.eth.contract(address=checksum_addr, abi=abi)
-            self._account  = self._w3.eth.accounts[0]
-            self._ready    = True
+            # ── ThreatLog (per-record logging) ──
+            if has_threatlog:
+                if settings.abi_path.exists():
+                    abi  = json.loads(settings.abi_path.read_text())
+                    addr = Web3.to_checksum_address(settings.contract_address)
+                    self._contract = self._w3.eth.contract(address=addr, abi=abi)
+                    self._ready = True
+                    logger.info("ThreatLog contract : %s", addr)
+                else:
+                    logger.warning("Blockchain: ThreatLog_abi.json not found — run deploy_contract.py first")
 
-            logger.info("Blockchain connected: %s", settings.ganache_url)
-            logger.info("Contract : %s", checksum_addr)
-            logger.info("Account  : %s", self._account)
+            # ── MerkleAnchor (batched root anchoring) ──
+            if has_merkle:
+                if settings.merkle_abi_path.exists():
+                    abi  = json.loads(settings.merkle_abi_path.read_text())
+                    addr = Web3.to_checksum_address(settings.merkle_contract_address)
+                    self._anchor = self._w3.eth.contract(address=addr, abi=abi)
+                    self._merkle_ready = True
+                    logger.info("MerkleAnchor contract: %s", addr)
+                else:
+                    logger.warning("Blockchain: MerkleAnchor_abi.json not found")
 
         except Exception as e:
             logger.error("Blockchain init error: %s — logging disabled", e)
 
     def is_ready(self) -> bool:
+        """True when the per-record ThreatLog contract is usable."""
         return self._ready
+
+    def merkle_ready(self) -> bool:
+        """True when the MerkleAnchor contract is usable."""
+        return self._merkle_ready
+
+    def is_connected(self) -> bool:
+        """True when any audit contract is usable."""
+        return self._ready or self._merkle_ready
+
+    # ── Merkle anchoring ────────────────────────────────────────────
+    def anchor_batch(self, root: bytes, leaf_count: int) -> Optional[dict]:
+        """Anchor a Merkle root. Returns {batch_id, tx_hash, gas_used} or None."""
+        if not self._merkle_ready:
+            return None
+        try:
+            tx_hash = self._anchor.functions.anchorBatch(root, leaf_count).transact({
+                "from": self._account, "gas": 200_000,
+            })
+            receipt  = self._w3.eth.wait_for_transaction_receipt(tx_hash)
+            batch_id = self._anchor.functions.totalBatches().call() - 1
+            logger.info("Merkle root anchored: batch=%s leaves=%s gas=%s",
+                        batch_id, leaf_count, receipt["gasUsed"])
+            return {"batch_id": batch_id, "tx_hash": "0x" + tx_hash.hex().removeprefix("0x"),
+                    "gas_used": receipt["gasUsed"]}
+        except Exception as e:
+            logger.error("Merkle anchor error: %s", e)
+            return None
+
+    def get_onchain_batch(self, batch_id: int) -> Optional[dict]:
+        if not self._merkle_ready:
+            return None
+        try:
+            root, count, ts = self._anchor.functions.getBatch(batch_id).call()
+            return {"root": "0x" + root.hex(), "leaf_count": count, "timestamp": ts}
+        except Exception as e:
+            logger.error("Merkle getBatch error: %s", e)
+            return None
+
+    def verify_onchain(self, batch_id: int, leaf: bytes, proof: list[bytes]) -> Optional[bool]:
+        """Ask the smart contract itself to verify a Merkle proof."""
+        if not self._merkle_ready:
+            return None
+        try:
+            return bool(self._anchor.functions.verify(batch_id, leaf, proof).call())
+        except Exception as e:
+            logger.error("Merkle verify error: %s", e)
+            return None
 
     def log_threat(self, prediction: dict) -> Optional[str]:
         """

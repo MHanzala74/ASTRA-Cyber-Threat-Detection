@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.schemas import NetworkFlow, ThreatPrediction
 from app.models import model_manager, EXPECTED_COLS, SEVERITY_MAP, RESPONSE_MAP
-from app.blockchain import blockchain
+from app.event_logger import record_threat
 from app.logger import logger
 
 router = APIRouter()
@@ -86,8 +86,8 @@ def predict_single(flow: NetworkFlow):
     )
 
     if prediction.is_threat:
-        tx = blockchain.log_threat(prediction.model_dump())
-        if tx:
-            logger.info("Threat '%s' logged on blockchain: %s...", verdict, tx[:20])
+        ref = record_threat(prediction.model_dump(exclude={"audit_record_id"}))
+        if ref and ref.get("mode") == "merkle":
+            prediction.audit_record_id = ref["record_id"]
 
     return prediction

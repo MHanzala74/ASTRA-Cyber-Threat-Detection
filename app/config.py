@@ -44,9 +44,18 @@ class Settings:
     ganache_url: str     = field(default_factory=lambda: _get_env("GANACHE_URL", "http://127.0.0.1:8545"))
     contract_address: str = field(default_factory=lambda: _get_env("CONTRACT_ADDRESS", ""))
 
+    # ── Merkle batching (gas-efficient audit logging) ────
+    # LOGGING_MODE: "per_record" (one tx per threat, original behaviour)
+    #               "merkle"     (batch records, anchor only the Merkle root)
+    logging_mode: str    = field(default_factory=lambda: _get_env("LOGGING_MODE", "per_record").lower())
+    merkle_contract_address: str = field(default_factory=lambda: _get_env("MERKLE_CONTRACT_ADDRESS", ""))
+    merkle_batch_size: int = field(default_factory=lambda: int(_get_env("MERKLE_BATCH_SIZE", "50")))
+    merkle_flush_seconds: int = field(default_factory=lambda: int(_get_env("MERKLE_FLUSH_SECONDS", "30")))
+
     # ── Paths ────────────────────────────────────────────
     base_dir: Path       = field(default_factory=lambda: Path(__file__).resolve().parent.parent)
     abi_path: Path       = field(default_factory=lambda: Path(__file__).resolve().parent / "ThreatLog_abi.json")
+    merkle_abi_path: Path = field(default_factory=lambda: Path(__file__).resolve().parent / "MerkleAnchor_abi.json")
 
     @property
     def artifacts_dir(self) -> Path:
@@ -54,6 +63,15 @@ class Settings:
         if custom:
             return Path(custom)
         return self.base_dir / "artifacts"
+
+    @property
+    def merkle_store_path(self) -> Path:
+        custom = _get_env("MERKLE_STORE_PATH", "")
+        return Path(custom) if custom else self.base_dir / "data" / "merkle_journal.jsonl"
+
+    @property
+    def merkle_enabled(self) -> bool:
+        return self.logging_mode == "merkle"
 
     @property
     def is_production(self) -> bool:

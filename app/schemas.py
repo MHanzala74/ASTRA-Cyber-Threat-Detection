@@ -140,6 +140,9 @@ class ThreatPrediction(BaseModel):
     severity:           str   = Field(..., description="none | medium | high | critical")
     recommended_action: str   = Field(..., description="Automated response suggestion")
     is_threat:          bool  = Field(..., description="True if a threat is detected")
+    audit_record_id:    Optional[int] = Field(
+        None, description="Merkle audit record id (only when LOGGING_MODE=merkle and a threat was logged)"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════

@@ -3,6 +3,7 @@ ASTRA - AI-Based Cyber Threat Detection and Response System
 FastAPI Backend - Main Application Entry Point
 """
 
+import asyncio
 import time
 from contextlib import asynccontextmanager
 
@@ -34,9 +35,32 @@ async def lifespan(app: FastAPI):
 
     blockchain.connect()
 
+    flusher = None
+    if settings.merkle_enabled:
+        from app.event_logger import get_batcher, flush_pending
+
+        batcher = get_batcher()
+        logger.info("🌳 Merkle batching ON (batch_size=%d, max_age=%ds)",
+                    settings.merkle_batch_size, settings.merkle_flush_seconds)
+
+        async def _flush_loop():
+            while True:
+                await asyncio.sleep(5)
+                try:
+                    batcher.flush_if_stale(blockchain.anchor_batch)
+                    batcher.retry_unanchored(blockchain.anchor_batch)
+                except Exception as exc:  # never kill the loop
+                    logger.error("Merkle flush loop error: %s", exc)
+
+        flusher = asyncio.create_task(_flush_loop())
+
     yield  # App runs here
 
     # Shutdown
+    if flusher:
+        flusher.cancel()
+        from app.event_logger import flush_pending
+        flush_pending()
     logger.info("🛑 ASTRA shutting down")
 
 
