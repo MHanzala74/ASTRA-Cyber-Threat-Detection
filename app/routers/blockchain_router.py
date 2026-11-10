@@ -17,20 +17,33 @@ router = APIRouter()
 
 @router.get("/blockchain/status", summary="Blockchain connection status")
 def blockchain_status():
-    """Check whether the blockchain node is reachable and the contract is deployed."""
+    """
+    Check whether the blockchain node is reachable and the contracts are deployed.
+    Also reports the active audit-logging mode (`per_record` or `merkle`).
+    """
     stats = blockchain.get_stats()
+    mode_info = {
+        "logging_mode": settings.logging_mode,
+        "threatlog_connected": blockchain.is_ready(),
+        "merkle_contract_connected": blockchain.merkle_ready(),
+    }
 
     if not stats.get("enabled"):
         return {
-            "status": "disabled",
-            "message": "Ganache is not running or CONTRACT_ADDRESS is missing in .env.",
+            "status": "disabled" if not blockchain.merkle_ready() else "merkle_only",
+            "message": (
+                "ThreatLog contract unavailable (Ganache not running or CONTRACT_ADDRESS missing). "
+                + ("MerkleAnchor is connected." if blockchain.merkle_ready() else "")
+            ).strip(),
             "details": stats,
+            **mode_info,
         }
 
     return {
         "status":  "connected",
         "message": "Blockchain is active ✅",
         **stats,
+        **mode_info,
     }
 
 

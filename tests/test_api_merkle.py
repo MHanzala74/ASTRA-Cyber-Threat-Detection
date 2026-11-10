@@ -97,3 +97,10 @@ def test_explain_endpoint_commits_explanation_hash_to_audit_record(client):
     bad = client.post("/api/v1/blockchain/merkle/verify",
                       json={"record_id": body["audit_record_id"], "record": forged}).json()
     assert not bad["valid_local"] and not bad["valid_onchain"]
+
+
+def test_status_reports_logging_mode_and_merkle_contract(client):
+    d = client.get("/api/v1/blockchain/status").json()
+    assert d["logging_mode"] == "merkle"
+    assert d["merkle_contract_connected"] is True
+    assert d["status"] == "merkle_only"          # test chain only has MerkleAnchor deployed
