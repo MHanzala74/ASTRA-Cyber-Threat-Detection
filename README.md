@@ -11,7 +11,6 @@
 [![Tests](https://img.shields.io/badge/tests-42%20passing-brightgreen)](#tests--benchmarks)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-**Final Year Project — BS Computer Science, AWKUM 2022–26**
 
 ASTRA classifies network flows with a Random Forest + XGBoost ensemble, **explains every decision**,
 and keeps a **cryptographically verifiable audit trail** on an Ethereum-compatible blockchain
