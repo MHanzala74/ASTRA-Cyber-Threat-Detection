@@ -74,3 +74,26 @@ def test_manual_flush_seals_pending(client):
 
 def test_unknown_record_404(client):
     assert client.get("/api/v1/blockchain/merkle/proof/999999").status_code == 404
+
+
+def test_explain_endpoint_commits_explanation_hash_to_audit_record(client):
+    r = client.post("/api/v1/predict/explain?top_k=5", json=_flows()["ddos"])
+    assert r.status_code == 200, r.text
+    body = r.json()
+    exp = body["explanation"]
+    assert body["is_threat"] and len(exp["top_features"]) == 5
+    assert exp["explanation_hash"].startswith("0x") and len(exp["explanation_hash"]) == 66
+
+    # the audit record (and therefore the Merkle leaf) carries the explanation hash
+    client.post("/api/v1/blockchain/merkle/flush")
+    proof = client.get(f"/api/v1/blockchain/merkle/proof/{body['audit_record_id']}").json()
+    assert proof["record"]["explanation_hash"] == exp["explanation_hash"]
+    v = client.post("/api/v1/blockchain/merkle/verify",
+                    json={"record_id": body["audit_record_id"], "record": proof["record"]}).json()
+    assert v["valid_local"] and v["valid_onchain"]
+
+    # changing the committed explanation hash breaks verification
+    forged = {**proof["record"], "explanation_hash": "0x" + "00" * 32}
+    bad = client.post("/api/v1/blockchain/merkle/verify",
+                      json={"record_id": body["audit_record_id"], "record": forged}).json()
+    assert not bad["valid_local"] and not bad["valid_onchain"]

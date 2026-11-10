@@ -146,6 +146,31 @@ class ThreatPrediction(BaseModel):
 
 
 # ══════════════════════════════════════════════════════════════════════
+#  RESPONSE — explainable prediction
+# ══════════════════════════════════════════════════════════════════════
+class FeatureContribution(BaseModel):
+    feature:      str
+    value:        float = Field(..., description="Raw (unscaled) feature value of this flow")
+    scaled_value: float = Field(..., description="Value after scaling, as seen by the model")
+    contribution: float = Field(..., description="SHAP contribution to the class margin (log-odds)")
+    direction:    str   = Field(..., description="supports | opposes the explained class")
+
+
+class Explanation(BaseModel):
+    method:            str
+    target_class:      str
+    base_value:        float
+    class_margin:      float
+    xgb_probability:   float
+    top_features:      List[FeatureContribution]
+    explanation_hash:  str = Field(..., description="keccak256 of the canonical explanation (committed in the audit record)")
+
+
+class ExplainedPrediction(ThreatPrediction):
+    explanation: Explanation
+
+
+# ══════════════════════════════════════════════════════════════════════
 #  REQUEST — batch
 # ══════════════════════════════════════════════════════════════════════
 class BatchRequest(BaseModel):

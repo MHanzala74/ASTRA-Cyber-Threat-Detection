@@ -4,9 +4,10 @@ ASTRA - Single Flow Prediction Router
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
-from app.schemas import NetworkFlow, ThreatPrediction
+from app.schemas import ExplainedPrediction, NetworkFlow, ThreatPrediction
+from app.explain import explain_flow
 from app.models import model_manager, EXPECTED_COLS, SEVERITY_MAP, RESPONSE_MAP
 from app.event_logger import record_threat
 from app.logger import logger
@@ -54,15 +55,8 @@ def make_verdict(rf_label: str, xgb_label: str) -> str:
     return rf_label  # Both threats differ: trust RF
 
 
-@router.post("/predict", response_model=ThreatPrediction, summary="Analyze a single network flow")
-def predict_single(flow: NetworkFlow):
-    """
-    Perform threat analysis on a **single** network flow.
-
-    - Dual-model ensemble: **Random Forest + XGBoost**
-    - Returns severity level and recommended response action
-    - Threats are automatically logged to the blockchain
-    """
+def _analyze(flow: NetworkFlow):
+    """Run the ensemble on one flow. Returns (prediction, X_raw, X_scaled)."""
     if not model_manager.is_ready():
         raise HTTPException(status_code=503, detail="Models are not loaded. Try again shortly.")
 
@@ -84,6 +78,19 @@ def predict_single(flow: NetworkFlow):
         recommended_action=RESPONSE_MAP.get(verdict, "Investigate manually."),
         is_threat=(verdict != "benign"),
     )
+    return prediction, X, X_scaled
+
+
+@router.post("/predict", response_model=ThreatPrediction, summary="Analyze a single network flow")
+def predict_single(flow: NetworkFlow):
+    """
+    Perform threat analysis on a **single** network flow.
+
+    - Dual-model ensemble: **Random Forest + XGBoost**
+    - Returns severity level and recommended response action
+    - Threats are automatically logged to the blockchain
+    """
+    prediction, _, _ = _analyze(flow)
 
     if prediction.is_threat:
         ref = record_threat(prediction.model_dump(exclude={"audit_record_id"}))
@@ -91,3 +98,34 @@ def predict_single(flow: NetworkFlow):
             prediction.audit_record_id = ref["record_id"]
 
     return prediction
+
+
+@router.post(
+    "/predict/explain",
+    response_model=ExplainedPrediction,
+    summary="Analyze a flow and explain WHY (TreeSHAP feature contributions)",
+)
+def predict_explain(flow: NetworkFlow, top_k: int = Query(8, ge=1, le=51, description="Top features to return")):
+    """
+    Same detection as `/predict`, plus an **exact TreeSHAP explanation** of the
+    verdict: which flow features pushed the model towards (or away from) the
+    detected class, and by how much.
+
+    The explanation is hashed (keccak256) and the hash is committed inside the
+    audit record, so the tamper-evident log also proves *why* the decision was made.
+    """
+    prediction, X_raw, X_scaled = _analyze(flow)
+    explanation = explain_flow(X_raw, X_scaled, prediction.final_verdict, top_k=top_k)
+
+    if prediction.is_threat:
+        ref = record_threat(
+            prediction.model_dump(exclude={"audit_record_id"}),
+            extra={
+                "explanation_hash": explanation["explanation_hash"],
+                "explanation_top_features": [f["feature"] for f in explanation["top_features"][:3]],
+            },
+        )
+        if ref and ref.get("mode") == "merkle":
+            prediction.audit_record_id = ref["record_id"]
+
+    return ExplainedPrediction(**prediction.model_dump(), explanation=explanation)
