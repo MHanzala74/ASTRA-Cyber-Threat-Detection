@@ -325,6 +325,21 @@
   .score-val  { font-family: var(--mono); font-size: 1.1rem; color: var(--accent); }
   .score-lbl  { font-family: var(--mono); font-size: .65rem; color: var(--text); margin-top: .1rem; }
 
+  /* ── explainability (TreeSHAP) ── */
+  .xai-box { margin-top:.9rem; }
+  .xai-title { font-family:var(--mono); font-size:.68rem; color:var(--accent); letter-spacing:.08em; margin-bottom:.45rem; }
+  .xai-row { display:grid; grid-template-columns: 9.5rem 1fr 3.6rem; gap:.5rem; align-items:center; margin:.22rem 0; font-family:var(--mono); font-size:.68rem; }
+  .xai-name { color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .xai-track { position:relative; height:.55rem; background:var(--bg3); border:1px solid var(--border); }
+  .xai-bar { position:absolute; top:0; bottom:0; }
+  .xai-bar.supports { background:var(--accent2); left:50%; }
+  .xai-bar.opposes  { background:var(--accent3); right:50%; }
+  .xai-track::after { content:''; position:absolute; left:50%; top:-2px; bottom:-2px; width:1px; background:var(--muted); }
+  .xai-val { color:var(--muted); text-align:right; }
+  .xai-meta { margin-top:.5rem; font-family:var(--mono); font-size:.62rem; color:var(--muted); word-break:break-all; }
+  .xai-legend { margin-top:.3rem; font-family:var(--mono); font-size:.6rem; color:var(--muted); }
+  .xai-legend .s { color:var(--accent2); } .xai-legend .o { color:var(--accent3); }
+
   .action-box {
     margin-top: .8rem;
     background: var(--bg3);
@@ -569,6 +584,7 @@
     <div class="action-box" id="action-box">
       Submit a flow to see the automated response recommendation.
     </div>
+    <div class="xai-box" id="xai-box" style="display:none"></div>
   </div>
 
   <!-- LIVE LOG -->
@@ -885,12 +901,15 @@ async function runPredict() {
   btn.disabled = true;
 
   try {
-    const r = await fetch(`${API}/predict`, {
+    const opts = {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(8000),
-    });
+    };
+    // Explainable endpoint first (TreeSHAP); fall back to plain /predict on older backends
+    let r = await fetch(`${API}/predict/explain?top_k=8`, opts);
+    if (r.status === 404) r = await fetch(`${API}/predict`, { ...opts, signal: AbortSignal.timeout(8000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     showResult(d);
@@ -925,6 +944,32 @@ function showResult(d) {
   const ab = document.getElementById('action-box');
   ab.textContent = d.recommended_action;
   ab.className = 'action-box' + (d.is_threat ? ' threat' : '');
+
+  renderExplanation(d);
+}
+
+function renderExplanation(d) {
+  const box = document.getElementById('xai-box');
+  const ex = d.explanation;
+  if (!ex || !ex.top_features || !ex.top_features.length) { box.style.display = 'none'; return; }
+
+  const maxAbs = Math.max(...ex.top_features.map(f => Math.abs(f.contribution)), 1e-9);
+  const rows = ex.top_features.map(f => {
+    const w = (Math.abs(f.contribution) / maxAbs * 50).toFixed(1);
+    const name = f.feature.replace(/</g,'&lt;');
+    return `<div class="xai-row" title="${name} = ${f.value} (scaled ${f.scaled_value})">
+      <span class="xai-name">${name}</span>
+      <span class="xai-track"><span class="xai-bar ${f.direction}" style="width:${w}%"></span></span>
+      <span class="xai-val">${f.contribution > 0 ? '+' : ''}${f.contribution.toFixed(2)}</span>
+    </div>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="xai-title">◈ WHY "${ex.target_class.toUpperCase()}"? — TOP FEATURES (TreeSHAP)</div>
+    ${rows}
+    <div class="xai-legend"><span class="s">■ pushes towards ${ex.target_class}</span> &nbsp; <span class="o">■ pushes away</span></div>
+    <div class="xai-meta">explanation hash: ${ex.explanation_hash}${d.audit_record_id != null ? ' &nbsp;|&nbsp; audit record #' + d.audit_record_id : ''}</div>`;
+  box.style.display = 'block';
 }
 
 function showOfflineResult() {
