@@ -55,7 +55,7 @@ at ~99% lower gas cost than naive per-record logging.
 
 ## How It Works
 
-![ASTRA Architecture](docs/architecture.svg)
+
 
 The audit path in Merkle mode:
 
