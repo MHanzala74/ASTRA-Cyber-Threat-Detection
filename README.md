@@ -58,8 +58,6 @@ The system is exposed as a REST API (FastAPI) with a browser dashboard, and ship
   <img src="docs/architecture.svg" alt="Fig. 1: Overall architecture of ASTRA" width="100%">
 </p>
 
-**Fig. 1.** Overall architecture of ASTRA.
-
 ### Detection pipeline
 
 An incoming flow of 51 CICFlowMeter features is scaled with a `RobustScaler` and passed to the Random Forest and XGBoost classifiers. Their outputs are fused into a single verdict, which is mapped to a severity level and a recommended action and returned by the API.
