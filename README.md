@@ -1,319 +1,299 @@
 <div align="center">
 
-# 🛡️ ASTRA
-### Explainable, Tamper-Evident Network Threat Detection
+# ASTRA
+### AI-Based Cyber Threat Detection and Response System with Blockchain Audit Logging
 
-[![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green?logo=fastapi)](https://fastapi.tiangolo.com)
-[![Blockchain](https://img.shields.io/badge/Blockchain-Ethereum%2FSolidity-purple?logo=ethereum)](https://ethereum.org)
-[![ML](https://img.shields.io/badge/ML-RandomForest%20%2B%20XGBoost-orange)](https://scikit-learn.org)
-[![XAI](https://img.shields.io/badge/XAI-TreeSHAP-informational)](#2-explainable-detection)
-[![Tests](https://img.shields.io/badge/tests-42%20passing-brightgreen)](#tests--benchmarks)
+[![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![scikit-learn](https://img.shields.io/badge/scikit--learn-RandomForest-orange?logo=scikitlearn&logoColor=white)](https://scikit-learn.org)
+[![XGBoost](https://img.shields.io/badge/XGBoost-TreeSHAP-informational)](https://xgboost.ai)
+[![Solidity](https://img.shields.io/badge/Solidity-0.8.19-363636?logo=solidity&logoColor=white)](https://soliditylang.org)
+[![Tests](https://img.shields.io/badge/tests-42%20passed-brightgreen)](#testing)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-
-ASTRA classifies network flows with a Random Forest + XGBoost ensemble, **explains every decision**,
-and keeps a **cryptographically verifiable audit trail** on an Ethereum-compatible blockchain
-at ~99% lower gas cost than naive per-record logging.
+Final Year Project, BS Computer Science, AWKUM (2022–2026)
 
 </div>
 
 ---
 
 ## Table of Contents
-- [Highlights](#highlights)
-- [How It Works](#how-it-works)
-- [Novel Contributions](#novel-contributions)
-- [Audit Logging Modes](#audit-logging-modes)
-- [Threat Detection](#threat-detection)
-- [API Endpoints](#api-endpoints)
-- [Quick Start](#quick-start)
-- [Demo: Detect, Explain, Verify, Tamper](#demo-detect-explain-verify-tamper)
-- [Docker Deployment](#docker-deployment)
-- [Environment Variables](#environment-variables)
-- [Tests & Benchmarks](#tests--benchmarks)
-- [Project Structure](#project-structure)
-- [Known Limitations](#known-limitations)
+
+1. [Overview](#overview)
+2. [Features](#features)
+3. [System Architecture](#system-architecture)
+4. [Audit Log Cost Evaluation](#audit-log-cost-evaluation)
+5. [Detected Threat Classes](#detected-threat-classes)
+6. [Installation](#installation)
+7. [Usage](#usage)
+8. [Configuration](#configuration)
+9. [Docker Deployment](#docker-deployment)
+10. [Testing](#testing)
+11. [Project Structure](#project-structure)
+12. [Limitations](#limitations)
+13. [License](#license)
 
 ---
 
-## Highlights
+## Overview
 
-| | Feature | Details |
+ASTRA is a network intrusion detection system that classifies network flows into benign traffic and several attack categories using an ensemble of a Random Forest and an XGBoost model trained on CICFlowMeter flow features. Each detection is returned with a severity level and a recommended response, can be accompanied by a feature-level explanation, and is recorded in an audit log anchored on an Ethereum-compatible blockchain so that stored detections cannot be altered without detection.
+
+The system is exposed as a REST API (FastAPI) with a browser dashboard, and ships with Solidity smart contracts, deployment tooling, an automated test suite and benchmarking scripts.
+
+## Features
+
+- **Ensemble detection.** Random Forest and XGBoost classifiers over 51 flow features, with per-model confidence and a fused verdict.
+- **Response recommendation.** Every verdict maps to a severity level and an operator action.
+- **Explainable predictions.** Exact TreeSHAP feature contributions from XGBoost (`/predict/explain`), shown in the dashboard.
+- **Blockchain audit log.** Detections are written to a smart contract either one record per transaction or in Merkle-tree batches.
+- **Verifiable records.** In Merkle mode any stored record can be checked against the on-chain root with a short proof, both locally and by the contract itself.
+- **Batch analysis.** JSON batches of up to 1,000 flows and CSV uploads of up to 5,000 rows.
+- **Evaluation tooling.** A script for cross-dataset evaluation and robustness testing of the saved models.
+- **Operations.** Environment-based configuration, CORS control, structured logging and a Docker setup.
+
+## System Architecture
+
+<p align="center">
+  <img src="docs/architecture.svg" alt="Fig. 1: Overall architecture of ASTRA" width="100%">
+</p>
+
+**Fig. 1.** Overall architecture of ASTRA.
+
+### Detection pipeline
+
+An incoming flow of 51 CICFlowMeter features is scaled with a `RobustScaler` and passed to the Random Forest and XGBoost classifiers. Their outputs are fused into a single verdict, which is mapped to a severity level and a recommended action and returned by the API.
+
+### Explainability
+
+For the `/predict/explain` endpoint, ASTRA computes exact TreeSHAP values with XGBoost's built-in `pred_contribs`. For the explained class, the contributions plus the base value equal the model's margin, and a softmax over the per-class margins reproduces `predict_proba` (verified in the test suite). The canonical explanation is hashed with keccak256 and the hash is stored in the audit record.
+
+### Audit logging
+
+Detections flagged as threats are passed to the audit module, which operates in one of two modes selected by `LOGGING_MODE`:
+
+| | `per_record` (default) | `merkle` |
 |---|---|---|
-| 🤖 | **Dual ML ensemble** | Random Forest + XGBoost, with per-model confidence and a combined verdict |
-| 🔍 | **Explainable decisions** | Exact TreeSHAP feature contributions for every prediction (`/predict/explain`) |
-| 🌳 | **Merkle-batched audit log** | Only a 32-byte root per batch goes on-chain; any record is provable with a short proof |
-| ⛓️ | **Tamper-evident** | Edit one field of a stored record and verification fails, locally and inside the smart contract |
-| 📉 | **~99% less gas** | 281,739 → 1,550 gas per record at batch size 50 (measured) |
-| 📊 | **Honest evaluation tooling** | Cross-dataset + robustness script that refuses to inflate results |
-| 📦 | **Batch processing** | JSON (up to 1,000 flows) and CSV upload (up to 5,000 rows) |
-| 🔒 | **Production-minded** | CORS control, structured logging, Docker, 42 automated tests |
+| Contract | `ThreatLog` | `MerkleAnchor` |
+| On-chain writes | One transaction per threat | One transaction per batch (Merkle root only) |
+| Stored on-chain | Full record | 32-byte root and record count |
+| Stored off-chain | None | Append-only journal (`data/merkle_journal.jsonl`) |
+| Integrity check | Read the record from the chain | Merkle proof verified against the anchored root |
+| Latency to chain | Immediate | Until a batch fills or `MERKLE_FLUSH_SECONDS` elapses |
+| Dashboard "Blockchain Records" table | Populated | Not populated (use `/blockchain/merkle/*`) |
 
----
+In Merkle mode, records are canonicalised and hashed into leaves (`keccak256(0x00 ‖ canonical_json)`), combined pairwise with sorted-pair hashing, and only the root of each batch is anchored. `MerkleAnchor.verify` recomputes the root from a leaf and its proof inside the contract. `per_record` is the default so that the dashboard and existing deployments behave as before. The active mode is reported by `GET /api/v1/blockchain/status`.
 
-## How It Works
+## Audit Log Cost Evaluation
 
+Gas cost was measured by logging 500 identical threat records through each contract on an in-memory EVM (`scripts/benchmark_gas.py`).
 
+<p align="center">
+  <img src="docs/gas_benchmark.png" alt="Fig. 2: Gas per audit record" width="75%">
+</p>
 
-The audit path in Merkle mode:
+**Fig. 2.** Gas per audit record for per-record logging and for Merkle batching at different batch sizes (log scale).
 
-```mermaid
-flowchart LR
-    A[Network flow] --> B[RF + XGBoost ensemble]
-    B --> C{Threat?}
-    C -- no --> Z[Return verdict]
-    C -- yes --> D[TreeSHAP explanation]
-    D --> E[Audit record<br/>verdict + explanation hash]
-    E --> F[Merkle batch buffer]
-    F -- batch full or timeout --> G[Merkle root]
-    G --> H[(MerkleAnchor contract)]
-    F -. proofs .-> I[Verify endpoint]
-    H -. root .-> I
-```
+| Strategy | Batch size | Transactions | Gas / record | Reduction |
+|---|---|---|---|---|
+| Per-record (`ThreatLog`) | 1 | 500 | 281,739 | n/a |
+| Merkle (`MerkleAnchor`) | 10 | 50 | 7,611 | 97.3% |
+| Merkle (`MerkleAnchor`) | 50 | 10 | 1,550 | 99.5% |
+| Merkle (`MerkleAnchor`) | 100 | 5 | 792 | 99.7% |
+| Merkle (`MerkleAnchor`) | 250 | 2 | 337 | 99.9% |
+| Merkle (`MerkleAnchor`) | 500 | 1 | 186 | 99.9% |
 
----
+The savings come from storing one 32-byte root per batch instead of the full record, at the cost of delayed anchoring and of keeping the raw records off-chain. Gas figures come from an in-memory EVM and are exact for the executed bytecode; actual network fees additionally depend on the gas price.
 
-## Novel Contributions
-
-ASTRA goes beyond "classifier + blockchain log" with three research-oriented additions.
-
-### 1. Merkle-batched, tamper-evident audit logging
-Writing every threat on-chain is expensive. ASTRA hashes records into a **Merkle tree** off-chain and anchors only the **root** of each batch in the `MerkleAnchor` smart contract. Any single record can later be proven with a logarithmic-size proof, checked both in Python and by the contract's own `verify()`.
-
-Measured on an in-memory EVM with 500 identical threat records (`python scripts/benchmark_gas.py`):
-
-| Mode | Batch size | Gas / record | Reduction |
-|---|---|---|---|
-| Per-record (`ThreatLog`) | 1 | 281,739 | — |
-| Merkle (`MerkleAnchor`) | 10 | 7,611 | 97.3% |
-| Merkle (`MerkleAnchor`) | 50 | 1,550 | 99.5% |
-| Merkle (`MerkleAnchor`) | 500 | 186 | 99.9% |
-
-![Gas benchmark](docs/gas_benchmark.png)
-
-**Trade-off:** records are buffered until a batch fills (or `MERKLE_FLUSH_SECONDS` passes), so anchoring is delayed. Raw records live in an off-chain append-only journal (`data/merkle_journal.jsonl`); the chain guarantees their *integrity* rather than storing them.
-
-### 2. Explainable detection
-`POST /api/v1/predict/explain` returns the verdict **and why**: exact TreeSHAP contributions from XGBoost (`pred_contribs`, no extra dependency). The explanation is faithful by construction: summed contributions reproduce `predict_proba` exactly (unit-tested). Its keccak256 hash is committed inside the audit record, so the tamper-evident log also proves *why* a decision was made. The dashboard renders the top features as signed bars.
-
-### 3. Generalization & robustness evaluation
-`scripts/evaluate.py` evaluates the saved models on another CICFlowMeter dataset (e.g. CSE-CIC-IDS2018) with per-class metrics, confusion matrices and robustness curves under evasion-like perturbations (raw-space jitter, Gaussian noise, feature masking). It excludes and counts unsupported labels, and refuses to run when too many features are missing, so reported numbers are never silently inflated.
+`scripts/evaluate.py` evaluates the saved models on another CICFlowMeter-format dataset (for example CSE-CIC-IDS2018) and writes per-class metrics, confusion matrices and robustness curves (multiplicative feature jitter, Gaussian noise, random feature masking) to `docs/evaluation/<name>/`. Cross-dataset results are not included in this repository.
 
 ```bash
 python scripts/evaluate.py --csv path/to/dataset.csv --name cic2018 --robustness
 ```
 
-> Cross-dataset results depend on the data you run it on and are **not included** in this repository. The script writes `docs/evaluation/<name>/report.md`.
+## Detected Threat Classes
 
----
+The shipped model predicts the following classes from 51 CICFlowMeter features.
 
-## Audit Logging Modes
-
-Choose with `LOGGING_MODE` in `.env`.
-
-| | `per_record` (default) | `merkle` |
+| Class | Severity | Recommended response |
 |---|---|---|
-| On-chain writes | One transaction per threat | One transaction per batch (root only) |
-| Gas per record | ~281,739 | ~1,550 at batch size 50 |
-| Visible on-chain | Immediately, full record | After batch seals, root only |
-| Dashboard "Blockchain Records" table | ✅ Populated | ❌ Not populated (use the `/blockchain/merkle/*` endpoints) |
-| Integrity proof | Record is stored on-chain | Merkle proof against the anchored root |
-| Contract needed | `ThreatLog` | `MerkleAnchor` |
-| Best for | Small deployments, live demos of the dashboard | High alert volume, cost-sensitive setups, research |
+| Benign | None | No action required. |
+| DDoS | Critical | Activate DDoS mitigation. Rate-limit source. Alert NOC. |
+| DoS | Critical | Rate-limit traffic. Block offending IP. Alert security team. |
+| BruteForce | High | Block source IP. Enable account lockout policy. |
+| PortScan | Medium | Flag source IP for monitoring. Review firewall rules. |
 
-`per_record` is the default so existing setups and the dashboard behave exactly as before. Switch to `merkle` when you want the gas savings and verifiable proofs. Check the active mode any time via `GET /api/v1/blockchain/status`.
+The code also defines a response for an `infiltration` class, but the shipped label encoder does not contain it, so the current model never predicts it (see [Limitations](#limitations)).
 
----
+## Installation
 
-## Threat Detection
+**Requirements:** Python 3.11 or newer. [Ganache](https://trufflesuite.com/ganache/) (or any EVM node) is optional and only needed for blockchain logging.
 
-ASTRA uses **51 CICFlowMeter features**. The shipped model predicts these classes:
+```bash
+git clone https://github.com/MHanzala74/ASTRA-Cyber-Threat-Detection.git
+cd ASTRA-Cyber-Threat-Detection
 
-| Threat | Severity | Automated response |
-|---|---|---|
-| ✅ Benign | None | No action required |
-| 🔴 DDoS | Critical | Activate DDoS mitigation. Rate-limit source. Alert NOC. |
-| 🔴 DoS | Critical | Rate-limit traffic. Block offending IP. Alert security team. |
-| 🟠 BruteForce | High | Block source IP. Enable account lockout policy. |
-| 🟡 PortScan | Medium | Flag source IP for monitoring. Review firewall rules. |
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 
-> **Infiltration** has a response mapping in the code (High: isolate system, forensic analysis), but the shipped label encoder contains no Infiltration class, so the current model never predicts it. See [Known Limitations](#known-limitations).
+cp .env.example .env
+```
 
----
+**Deploy the contracts (optional).** Start a local node (`ganache --port 8545`), then:
 
-## API Endpoints
+```bash
+python deploy_contract.py
+```
 
-Interactive docs: **http://localhost:8000/docs**
+The script deploys `ThreatLog` and `MerkleAnchor` from the compiled artifacts in `build/contracts/` and prints their addresses. Add them to `.env` as `CONTRACT_ADDRESS` and `MERKLE_CONTRACT_ADDRESS`, and set `LOGGING_MODE=merkle` to use Merkle batching.
+
+**Run the API:**
+
+```bash
+python startup.py
+```
+
+The API listens on `http://localhost:8000` (interactive documentation at `/docs`). It runs without a blockchain node; logging is then disabled and reported by `/api/v1/health`. To use the dashboard, open `ui/astra_dashboard_1.html` in a browser while the API is running.
+
+## Usage
+
+### API endpoints
+
+All endpoints are prefixed with `/api/v1`.
 
 **Detection**
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/v1/health` | System health (models + blockchain) |
-| `POST` | `/api/v1/predict` | Analyze a single flow |
-| `POST` | `/api/v1/predict/explain` | Analyze a flow + TreeSHAP explanation (`?top_k=8`) |
-| `POST` | `/api/v1/predict/batch` | Analyze up to 1,000 flows (JSON) |
-| `POST` | `/api/v1/predict/csv` | Analyze up to 5,000 flows (CSV upload) |
+| `GET` | `/health` | Service health (models, blockchain) |
+| `POST` | `/predict` | Classify a single flow |
+| `POST` | `/predict/explain` | Classify a flow and return TreeSHAP feature contributions (`?top_k=8`) |
+| `POST` | `/predict/batch` | Classify up to 1,000 flows (JSON) |
+| `POST` | `/predict/csv` | Classify up to 5,000 flows (CSV upload) |
 
 **Blockchain audit**
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/v1/blockchain/status` | Connection status, active logging mode |
-| `GET` | `/api/v1/blockchain/logs` | All on-chain records (`per_record` mode) |
-| `GET` | `/api/v1/blockchain/logs/{id}` | Single on-chain record |
-| `GET` | `/api/v1/blockchain/merkle/stats` | Batching stats, average gas per record |
-| `GET` | `/api/v1/blockchain/merkle/batches` | Sealed batches and anchoring status |
-| `POST` | `/api/v1/blockchain/merkle/flush` | Seal pending records and anchor now |
-| `GET` | `/api/v1/blockchain/merkle/proof/{id}` | Merkle proof for one audit record |
-| `POST` | `/api/v1/blockchain/merkle/verify` | Verify a record locally and in the smart contract |
+| `GET` | `/blockchain/status` | Connection state and active logging mode |
+| `GET` | `/blockchain/logs` | All on-chain records (`per_record` mode) |
+| `GET` | `/blockchain/logs/{id}` | A single on-chain record |
+| `GET` | `/blockchain/merkle/stats` | Batching statistics and average gas per record |
+| `GET` | `/blockchain/merkle/batches` | Sealed batches and their anchoring status |
+| `POST` | `/blockchain/merkle/flush` | Seal pending records and anchor their root |
+| `GET` | `/blockchain/merkle/proof/{id}` | Record, leaf hash, Merkle proof and root |
+| `POST` | `/blockchain/merkle/verify` | Verify a submitted record locally and in the contract |
 
-The `merkle/*` endpoints return `409` unless `LOGGING_MODE=merkle`.
+The `merkle/*` endpoints return `409` unless `LOGGING_MODE=merkle`. Missing flow features default to `0`; the full request schema is available at `/docs`.
 
----
+### Example: detect, verify, and detect tampering
 
-## Quick Start
-
-**Prerequisites:** Python 3.11+, and optionally [Ganache](https://trufflesuite.com/ganache/) for the blockchain features.
+With `LOGGING_MODE=merkle` and a deployed `MerkleAnchor`:
 
 ```bash
-# 1. Clone & install
-git clone https://github.com/MHanzala74/ASTRA-Cyber-Threat-Detection.git
-cd ASTRA-Cyber-Threat-Detection
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-# 2. Configure
-cp .env.example .env
-
-# 3. (Optional) deploy contracts — start Ganache first: ganache --port 8545
-python deploy_contract.py        # prints CONTRACT_ADDRESS and MERKLE_CONTRACT_ADDRESS
-# paste both into .env, and set LOGGING_MODE=merkle if you want batching
-
-# 4. Run
-python startup.py
-```
-
-The API runs without Ganache; blockchain logging is simply disabled and `/health` reports it.
-
-Open the dashboard by opening `ui/astra_dashboard_1.html` in a browser (API must be running).
-
----
-
-## Demo: Detect, Explain, Verify, Tamper
-
-Requires `LOGGING_MODE=merkle` and a deployed `MerkleAnchor`. Use any valid flow payload (missing features default to 0; see `/docs` for the full schema).
-
-```bash
-# 1) Detect + explain: returns verdict, top SHAP features, explanation_hash, audit_record_id
+# 1. Classify and explain a flow (flow.json holds the 51 features).
+#    The response includes explanation_hash and audit_record_id for threats.
 curl -s -X POST "http://localhost:8000/api/v1/predict/explain?top_k=5" \
      -H "Content-Type: application/json" -d @flow.json
 
-# 2) Seal the pending batch and anchor its Merkle root on-chain
+# 2. Seal the pending batch and anchor its root on-chain.
 curl -s -X POST http://localhost:8000/api/v1/blockchain/merkle/flush
 
-# 3) Fetch the proof for the record (use the audit_record_id from step 1)
+# 3. Retrieve the proof for the record.
 curl -s http://localhost:8000/api/v1/blockchain/merkle/proof/0
 
-# 4) Verify the untouched record  ->  valid_local: true, valid_onchain: true
+# 4. Verify the unmodified record: valid_local and valid_onchain are true.
 curl -s -X POST http://localhost:8000/api/v1/blockchain/merkle/verify \
      -H "Content-Type: application/json" \
-     -d '{"record_id": 0, "record": { ...record from step 3... }}'
+     -d '{"record_id": 0, "record": { ...record returned in step 3... }}'
 
-# 5) Tamper: change any field (e.g. "severity": "none") and verify again
-#    ->  valid_local: false, valid_onchain: false
+# 5. Change any field of the record (e.g. "severity") and repeat step 4:
+#    both checks now return false.
 ```
 
----
+## Configuration
 
-## Docker Deployment
-
-```bash
-docker compose up --build        # API + Ganache
-docker compose up -d --build     # in background
-docker compose logs -f astra
-docker compose down
-```
-
----
-
-## Environment Variables
-
-Copy `.env.example` to `.env`:
+Settings are read from environment variables (see `.env.example`).
 
 | Variable | Default | Description |
 |---|---|---|
 | `APP_ENV` | `development` | `development` or `production` |
-| `APP_HOST` | `0.0.0.0` | Server bind address |
-| `APP_PORT` | `8000` | Server port |
+| `APP_HOST` | `0.0.0.0` | Bind address |
+| `APP_PORT` | `8000` | Port |
 | `APP_WORKERS` | `1` | Uvicorn worker processes |
 | `ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated CORS origins |
 | `GANACHE_URL` | `http://127.0.0.1:8545` | Ethereum node URL |
-| `CONTRACT_ADDRESS` | *(empty)* | Deployed `ThreatLog` address |
-| `MERKLE_CONTRACT_ADDRESS` | *(empty)* | Deployed `MerkleAnchor` address |
+| `CONTRACT_ADDRESS` | empty | Deployed `ThreatLog` address |
+| `MERKLE_CONTRACT_ADDRESS` | empty | Deployed `MerkleAnchor` address |
 | `LOGGING_MODE` | `per_record` | `per_record` or `merkle` |
 | `MERKLE_BATCH_SIZE` | `50` | Records per Merkle batch |
-| `MERKLE_FLUSH_SECONDS` | `30` | Seal a partial batch after N seconds |
+| `MERKLE_FLUSH_SECONDS` | `30` | Seal a partial batch after this many seconds |
 | `MERKLE_STORE_PATH` | `data/merkle_journal.jsonl` | Off-chain audit journal |
-| `LOG_LEVEL` | `INFO` | `DEBUG / INFO / WARNING / ERROR` |
-| `LOG_FILE` | *(empty)* | Log file path (empty = console only) |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
+| `LOG_FILE` | empty | Log file path (empty: console only) |
 
-> Never commit `.env` or any access token. Use `.env.example` as the template.
+Do not commit `.env` or any access tokens.
 
----
+## Docker Deployment
 
-## Tests & Benchmarks
+```bash
+docker compose up --build          # API and Ganache
+docker compose up -d --build       # detached
+docker compose logs -f astra
+docker compose down
+```
+
+## Testing
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q                          # 42 tests: Merkle logic, contract verification,
-                                   # explainability, evaluation pipeline, end-to-end API
-python scripts/benchmark_gas.py    # per-record vs Merkle gas comparison -> docs/
+pytest -q
+python scripts/benchmark_gas.py
 ```
 
-The end-to-end tests run the real FastAPI app and models against an in-memory EVM, so no Ganache is needed.
-
----
+The 42 tests cover Merkle tree construction and proofs, verification of Python-generated proofs inside the Solidity contract, the faithfulness of the TreeSHAP explanations, the evaluation pipeline, and end-to-end API behaviour including tamper detection. They run against an in-memory EVM, so no external node is required. The evaluation-pipeline tests use synthetic data and check the code path, not detection accuracy.
 
 ## Project Structure
 
 ```
-ASTRA/
+.
 ├── app/
-│   ├── main.py              # FastAPI app, middleware, lifespan (+ Merkle flush task)
-│   ├── config.py            # Settings from env vars
-│   ├── models.py            # ML model singleton + feature list
-│   ├── schemas.py           # Pydantic request/response models
-│   ├── blockchain.py        # Web3 integration (ThreatLog + MerkleAnchor)
-│   ├── merkle.py            # Merkle tree, proofs, persistent batcher
-│   ├── event_logger.py      # per_record / merkle logging dispatcher
-│   ├── explain.py           # TreeSHAP explanations + explanation hash
-│   └── routers/             # health, predict, batch, blockchain_router
-├── artifacts/               # rf / xgb models, scaler, label encoder
-├── build/contracts/         # Compiled ABI + bytecode (solc 0.8.19)
-├── contracts: ThreatLog.sol, MerkleAnchor.sol
+│   ├── main.py                 # FastAPI application and lifespan tasks
+│   ├── config.py               # Environment-based settings
+│   ├── models.py               # Model loading and feature list
+│   ├── schemas.py              # Request and response models
+│   ├── blockchain.py           # Web3 integration (ThreatLog, MerkleAnchor)
+│   ├── merkle.py               # Merkle tree, proofs, persistent batcher
+│   ├── event_logger.py         # per_record / merkle logging dispatcher
+│   ├── explain.py              # TreeSHAP explanations and hashing
+│   └── routers/                # health, predict, batch, blockchain
+├── artifacts/                  # Trained models, scaler, label encoder
+├── build/contracts/            # Compiled ABI and bytecode (solc 0.8.19)
+├── ThreatLog.sol               # Per-record logging contract
+├── MerkleAnchor.sol            # Merkle-root anchoring contract
 ├── scripts/
-│   ├── benchmark_gas.py     # Gas benchmark
-│   └── evaluate.py          # Cross-dataset + robustness evaluation
-├── tests/                   # pytest suite
-├── ui/astra_dashboard_1.html
-├── docs/                    # architecture diagram, gas benchmark
-├── deploy_contract.py       # Deploys both contracts
-├── startup.py               # Uvicorn entry point
-├── Dockerfile / docker-compose.yml
-├── requirements.txt / requirements-dev.txt
+│   ├── benchmark_gas.py        # Gas benchmark
+│   └── evaluate.py             # Cross-dataset and robustness evaluation
+├── tests/                      # pytest suite
+├── ui/astra_dashboard_1.html   # Browser dashboard
+├── docs/                       # Figures and benchmark results
+├── deploy_contract.py          # Contract deployment
+├── startup.py                  # Server entry point
+├── Dockerfile, docker-compose.yml
+├── requirements.txt, requirements-dev.txt
 └── .env.example
 ```
 
----
+## Limitations
 
-## Known Limitations
+- The saved label encoder has five classes and no Infiltration class; the model cannot predict it until retrained with such data.
+- The model files were serialised with scikit-learn 1.8.0 while `requirements.txt` pins 1.5.2. Predictions matched in our check, but loading emits a version warning; align the pin or re-export the models before production use.
+- Explanations are computed from the XGBoost model only; the Random Forest is not explained.
+- In Merkle mode, anchoring is delayed until a batch is sealed, and the off-chain journal must be backed up: the chain proves integrity but does not store the records.
+- Generalisation to other datasets has not been measured here; run `scripts/evaluate.py` on the target data.
+- The dashboard's "Blockchain Records" table reads only the per-record `ThreatLog` contract.
 
-- **Class coverage:** the saved label encoder has 5 classes (no Infiltration). Retrain with Infiltration data to enable it.
-- **Library versions:** the model files were serialized with scikit-learn 1.8.0 while `requirements.txt` pins 1.5.2. Predictions matched in our check, but loading emits a version warning; re-export the models or align the pin for production.
-- **Explanations cover XGBoost only.** The ensemble verdict is explained through the XGBoost model's TreeSHAP values; the Random Forest is not explained.
-- **Merkle mode delays anchoring** until a batch seals, and the off-chain journal must be backed up: the chain proves integrity but does not store the records.
-- **Cross-dataset performance is unreported** until `scripts/evaluate.py` is run on the target datasets.
-- **Dashboard:** the "Blockchain Records" table reads the per-record `ThreatLog` contract only.
+## License
+
+Distributed under the MIT License. See [LICENSE](LICENSE).

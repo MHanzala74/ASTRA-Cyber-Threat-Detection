@@ -1,8 +1,8 @@
 """
 ASTRA — Merkle Batching Module
 
-Novelty: instead of writing every detected threat on-chain (one transaction per
-record), ASTRA hashes records into a Merkle tree off-chain and anchors only the
+Rationale: writing every detected threat on-chain costs one transaction per
+record. Instead, ASTRA hashes records into a Merkle tree off-chain and anchors only the
 32-byte root of each batch on the blockchain. Any record can later be proven to
 belong to an anchored batch with a logarithmic-size proof, so tamper-evidence is
 preserved while gas cost per record drops roughly by the batch size.

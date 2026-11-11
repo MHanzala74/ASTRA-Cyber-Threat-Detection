@@ -101,17 +101,26 @@ def main():
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        labels = ["per-record"] + [f"Merkle\nbatch={r['batch_size']}" for r in rows[1:]]
+        plt.rcParams.update({"font.family": "serif", "font.serif": ["Times New Roman", "Liberation Serif", "DejaVu Serif"],
+                             "font.size": 11})
+        labels = ["Per-record"] + [f"Merkle\n(batch {r['batch_size']})" for r in rows[1:]]
         vals = [r["gas_per_record"] for r in rows]
-        fig, ax = plt.subplots(figsize=(8, 4.2))
-        bars = ax.bar(labels, vals, color=["#c0392b"] + ["#2e86de"] * (len(rows) - 1))
+        fig, ax = plt.subplots(figsize=(7.2, 3.8))
+        bars = ax.bar(labels, vals, color=["#555555"] + ["#d0d0d0"] * (len(rows) - 1),
+                      edgecolor="black", linewidth=0.9)
+        bars[0].set_hatch("///")
         ax.set_yscale("log")
-        ax.set_ylabel("Gas per threat record (log scale)")
-        ax.set_title(f"ASTRA audit logging cost — {a.records} records")
-        for b, v in zip(bars, vals):
-            ax.text(b.get_x() + b.get_width() / 2, v, f"{v:,.0f}", ha="center", va="bottom", fontsize=8)
+        ax.set_ylabel("Gas per audit record (log scale)")
+        ax.set_xlabel(f"Logging strategy ({a.records} records)")
+        ax.grid(axis="y", linestyle=":", linewidth=0.6, alpha=0.7)
+        ax.set_axisbelow(True)
+        for sp in ("top", "right"):
+            ax.spines[sp].set_visible(False)
+        for bar, v in zip(bars, vals):
+            ax.text(bar.get_x() + bar.get_width() / 2, v * 1.12, f"{v:,.0f}", ha="center", va="bottom", fontsize=9)
+        ax.set_ylim(top=max(vals) * 4)
         fig.tight_layout()
-        fig.savefig(out / "gas_benchmark.png", dpi=150)
+        fig.savefig(out / "gas_benchmark.png", dpi=200)
         print(f"\nSaved {out/'gas_benchmark.png'}")
     except ImportError:
         print("matplotlib not installed — skipped chart")
