@@ -11,7 +11,6 @@
 [![Tests](https://img.shields.io/badge/tests-42%20passed-brightgreen)](#testing)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-Final Year Project, BS Computer Science, AWKUM (2022–2026)
 
 </div>
 
